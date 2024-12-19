@@ -7,7 +7,7 @@ use std::{
     path::Path,
     time::Instant,
 };
-use sysinfo::System;
+use sysinfo::{Disks, Networks, System};
 
 // Common result structures
 #[derive(Debug)]
@@ -50,6 +50,8 @@ pub struct SystemInfoResult {
     pub cpu_count: usize,
     pub total_memory_mb: u64,
     pub used_memory_mb: u64,
+    pub disk_info: String,
+    pub network_info: String,
 }
 
 // Disk Benchmarks
@@ -272,6 +274,31 @@ pub fn gather_system_info() -> SystemInfoResult {
     let total_memory_mb = sys.total_memory() / 1024;
     let used_memory_mb = sys.used_memory() / 1024;
 
+    let networks = Networks::new_with_refreshed_list();
+    let disks = Disks::new_with_refreshed_list();
+
+    // Build the disk_info string
+    let mut disk_info = String::from("Disks:\n");
+    for disk in disks.list() {
+        disk_info.push_str(&format!(
+            "  {:?}: {}B total, {}B available\n",
+            disk.name(),
+            disk.total_space(),
+            disk.available_space()
+        ));
+    }
+
+    // Build the network_info string
+    let mut network_info = String::from("Networks:\n");
+    for (name, data) in networks.list() {
+        network_info.push_str(&format!(
+            "  {}: received={}B, transmitted={}B\n",
+            name,
+            data.total_received(),
+            data.total_transmitted()
+        ));
+    }
+
     SystemInfoResult {
         long_os_version,
         kernel_version,
@@ -279,6 +306,8 @@ pub fn gather_system_info() -> SystemInfoResult {
         cpu_count,
         total_memory_mb,
         used_memory_mb,
+        disk_info,
+        network_info,
     }
 }
 
@@ -298,7 +327,9 @@ pub fn format_results(result: &BenchmarkResult, sysinfo: &SystemInfoResult) -> S
          \n  Bandwidth: {:.2} GB/s\
          \n\nCPU Performance:\
          \n  Single-threaded: {:.2} hashes/s\
-         \n  Multi-threaded: {:.2} hashes/s (using {} threads)",
+         \n  Multi-threaded: {:.2} hashes/s (using {} threads)\
+         \n\n{}\
+         \n{}",
         sysinfo
             .long_os_version
             .clone()
@@ -318,7 +349,9 @@ pub fn format_results(result: &BenchmarkResult, sysinfo: &SystemInfoResult) -> S
         result.memory.bandwidth_gb_s,
         result.cpu_single.hashes_per_second,
         result.cpu_parallel.hashes_per_second,
-        result.cpu_parallel.threads_used
+        result.cpu_parallel.threads_used,
+        sysinfo.disk_info,
+        sysinfo.network_info,
     )
 }
 
