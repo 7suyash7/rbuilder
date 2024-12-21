@@ -24,10 +24,23 @@ pub async fn subscribe_to_txpool_with_blobs(
     results: mpsc::Sender<ReplaceableOrderPoolCommand>,
     global_cancel: CancellationToken,
 ) -> eyre::Result<JoinHandle<()>> {
-    let ipc = IpcConnect::new(config.ipc_path);
-    let provider = ProviderBuilder::new().on_ipc(ipc).await?;
-
     let handle = tokio::spawn(async move {
+        // Early return if no IPC path
+        let provider = match config.ipc_path {
+            Some(path) => match ProviderBuilder::new().on_ipc(IpcConnect::new(path)).await {
+                Ok(provider) => provider,
+                Err(err) => {
+                    error!(?err, "Failed to connect to IPC");
+                    global_cancel.cancel();
+                    return;
+                }
+            },
+            None => {
+                info!("No IPC path configured, skipping txpool subscription");
+                return;
+            }
+        };
+
         info!("Subscribe to txpool with blobs: started");
 
         let stream = match provider.subscribe_pending_transactions().await {
@@ -114,6 +127,7 @@ async fn get_tx_with_blobs(
 
 #[cfg(test)]
 mod test {
+
     use super::*;
     use alloy_consensus::{SidecarBuilder, SimpleCoder};
     use alloy_network::{EthereumWallet, TransactionBuilder};
@@ -122,6 +136,7 @@ mod test {
     use alloy_provider::{Provider, ProviderBuilder};
     use alloy_rpc_types::TransactionRequest;
     use alloy_signer_local::PrivateKeySigner;
+    use std::path::PathBuf;
 
     #[tokio::test]
     /// Test that the fetcher can retrieve transactions (both normal and blob) from the txpool
@@ -133,7 +148,10 @@ mod test {
 
         let (sender, mut receiver) = mpsc::channel(10);
         subscribe_to_txpool_with_blobs(
-            OrderInputConfig::default_e2e(),
+            OrderInputConfig {
+                ipc_path: Some(PathBuf::from("/tmp/anvil.ipc")),
+                ..OrderInputConfig::default_e2e()
+            },
             sender,
             CancellationToken::new(),
         )

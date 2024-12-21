@@ -17,8 +17,12 @@ use alloy_consensus::Header;
 use jsonrpsee::RpcModule;
 use parking_lot::Mutex;
 use reth_provider::StateProviderFactory;
-use std::time::Instant;
-use std::{net::Ipv4Addr, path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    net::Ipv4Addr,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
 use tokio::{sync::mpsc, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, trace, warn};
@@ -82,7 +86,7 @@ pub struct OrderInputConfig {
     /// if true -- txs with blobs are ignored
     ignore_blobs: bool,
     /// Path to reth ipc
-    ipc_path: PathBuf,
+    ipc_path: Option<PathBuf>,
     /// Input RPC port
     server_port: u16,
     /// Input RPC ip
@@ -103,7 +107,7 @@ impl OrderInputConfig {
     pub fn new(
         ignore_cancellable_orders: bool,
         ignore_blobs: bool,
-        ipc_path: PathBuf,
+        ipc_path: Option<PathBuf>,
         server_port: u16,
         server_ip: Ipv4Addr,
         serve_max_connections: u32,
@@ -123,7 +127,11 @@ impl OrderInputConfig {
     }
 
     pub fn from_config(config: &BaseConfig) -> eyre::Result<Self> {
-        let el_node_ipc_path = expand_path(config.el_node_ipc_path.clone())?;
+        let el_node_ipc_path = config
+            .el_node_ipc_path
+            .as_ref()
+            .map(|p| expand_path(p.as_path()))
+            .transpose()?;
 
         Ok(OrderInputConfig {
             ignore_cancellable_orders: config.ignore_cancellable_orders,
@@ -139,7 +147,7 @@ impl OrderInputConfig {
 
     pub fn default_e2e() -> Self {
         Self {
-            ipc_path: PathBuf::from("/tmp/anvil.ipc"),
+            ipc_path: Some(PathBuf::from("/tmp/anvil.ipc")),
             results_channel_timeout: Duration::new(5, 0),
             ignore_cancellable_orders: false,
             ignore_blobs: false,
@@ -291,7 +299,7 @@ where
     Ok((handle, subscriber))
 }
 
-pub fn expand_path(path: PathBuf) -> eyre::Result<PathBuf> {
+pub fn expand_path(path: &Path) -> eyre::Result<PathBuf> {
     let path_str = path
         .to_str()
         .ok_or_else(|| eyre::eyre!("Invalid UTF-8 in path"))?;
