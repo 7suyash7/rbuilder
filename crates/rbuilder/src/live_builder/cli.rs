@@ -19,7 +19,10 @@ use crate::{
     utils::build_info::Version,
 };
 
-use super::{base_config::BaseConfig, LiveBuilder};
+use super::{
+    base_config::{BaseConfig, MergeFromCli},
+    LiveBuilder,
+};
 
 #[derive(Parser, Debug)]
 enum Cli {
@@ -40,6 +43,93 @@ enum Cli {
 struct RunCmd {
     #[clap(env = "RBUILDER_CONFIG", help = "Config file path")]
     config: PathBuf,
+
+    #[command(flatten)]
+    base: BaseCliArgs,
+
+    #[command(flatten)]
+    l1: L1CliArgs,
+}
+
+#[derive(Parser, Debug, Default)]
+pub struct BaseCliArgs {
+    #[arg(long, help = "Enable JSON logging format")]
+    pub log_json: Option<bool>,
+
+    #[arg(long, help = "Log level configuration string")]
+    pub log_level: Option<String>,
+
+    #[arg(long, help = "Port for full telemetry server")]
+    pub full_telemetry_server_port: Option<u16>,
+
+    #[arg(long, help = "IP address for full telemetry server")]
+    pub full_telemetry_server_ip: Option<String>,
+
+    #[arg(long, help = "Port for redacted telemetry server")]
+    pub redacted_telemetry_server_port: Option<u16>,
+
+    #[arg(long, help = "IP address for redacted telemetry server")]
+    pub redacted_telemetry_server_ip: Option<String>,
+
+    #[arg(long, help = "Enable colored log output")]
+    pub log_color: Option<bool>,
+
+    #[arg(long, help = "Enable dynamic logging to file")]
+    pub log_enable_dynamic: Option<bool>,
+
+    #[arg(long, help = "Path to store error logs")]
+    pub error_storage_path: Option<PathBuf>,
+
+    #[arg(long, help = "Coinbase signer secret key")]
+    pub coinbase_secret_key: Option<String>,
+
+    #[arg(long, help = "Flashbots database URL")]
+    pub flashbots_db: Option<String>,
+
+    #[arg(long, help = "JSON-RPC server port")]
+    pub jsonrpc_server_port: Option<u16>,
+
+    #[arg(long, help = "JSON-RPC server IP address")]
+    pub jsonrpc_server_ip: Option<String>,
+
+    #[arg(long, help = "Ignore cancellable orders")]
+    pub ignore_cancellable_orders: Option<bool>,
+
+    #[arg(long, help = "Ignore blob transactions")]
+    pub ignore_blobs: Option<bool>,
+
+    #[arg(long, help = "Chain identifier (mainnet/goerli/etc)")]
+    pub chain: Option<String>,
+
+    #[arg(long, help = "Path to reth data directory")]
+    pub reth_datadir: Option<PathBuf>,
+}
+
+#[derive(Parser, Debug, Default)]
+pub struct L1CliArgs {
+    #[arg(long, help = "Enable dry run mode")]
+    pub dry_run: Option<bool>,
+
+    #[arg(long, help = "URLs for dry run validation")]
+    pub dry_run_validation_url: Option<Vec<String>>,
+
+    #[arg(long, help = "Enable optimistic submission mode")]
+    pub optimistic_enabled: Option<bool>,
+
+    #[arg(long, help = "Maximum bid value (ETH) for optimistic mode")]
+    pub optimistic_max_bid_value_eth: Option<String>,
+
+    #[arg(long, help = "Pre-validate optimistic blocks")]
+    pub optimistic_prevalidate_optimistic_blocks: Option<bool>,
+
+    #[arg(long, help = "Maximum concurrent block sealing operations")]
+    pub max_concurrent_seals: Option<u64>,
+
+    #[arg(long, help = "Consensus layer node URLs")]
+    pub cl_node_url: Option<Vec<String>>,
+
+    #[arg(long, help = "Genesis fork version override")]
+    pub genesis_fork_version: Option<String>,
 }
 
 /// Basic stuff needed to call cli::run
@@ -84,13 +174,15 @@ pub trait LiveBuilderConfig: Debug + DeserializeOwned + Sync {
 /// on_run func that will be called on command Cli::Run just before running
 pub async fn run<ConfigType>(print_version_info: fn(), on_run: Option<fn()>) -> eyre::Result<()>
 where
-    ConfigType: LiveBuilderConfig,
+    ConfigType: LiveBuilderConfig + MergeFromCli<BaseCliArgs> + MergeFromCli<L1CliArgs>,
 {
     let cli = Cli::parse();
     let cli = match cli {
         Cli::Run(cli) => cli,
         Cli::Config(cli) => {
-            let config: ConfigType = load_config_toml_and_env(cli.config)?;
+            let mut config: ConfigType = load_config_toml_and_env(cli.config)?;
+            config.merge(&cli.base);
+            config.merge(&cli.l1);
             println!("{:#?}", config);
             return Ok(());
         }
@@ -108,7 +200,9 @@ where
         }
     };
 
-    let config: ConfigType = load_config_toml_and_env(cli.config)?;
+    let mut config: ConfigType = load_config_toml_and_env(cli.config)?;
+    config.merge(&cli.base);
+    config.merge(&cli.l1);
     config.base_config().setup_tracing_subscriber()?;
 
     let cancel = CancellationToken::new();

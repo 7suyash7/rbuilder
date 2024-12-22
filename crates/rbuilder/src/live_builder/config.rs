@@ -2,7 +2,7 @@
 //!
 //!
 use super::{
-    base_config::BaseConfig,
+    base_config::{BaseConfig, MergeFromCli},
     block_output::{
         bid_observer::{BidObserver, NullBidObserver},
         bid_value_source::null_bid_value_source::NullBidValueSource,
@@ -13,6 +13,7 @@ use super::{
         block_sealing_bidder_factory::BlockSealingBidderFactory,
         relay_submit::{RelaySubmitSinkFactory, SubmissionConfig},
     },
+    cli::{BaseCliArgs, L1CliArgs},
 };
 use crate::{
     beacon_api_client::Client,
@@ -464,6 +465,18 @@ impl Default for Config {
     }
 }
 
+impl MergeFromCli<BaseCliArgs> for Config {
+    fn merge(&mut self, cli: &BaseCliArgs) {
+        self.base_config.merge(cli);
+    }
+}
+
+impl MergeFromCli<L1CliArgs> for Config {
+    fn merge(&mut self, cli: &L1CliArgs) {
+        self.l1_config.merge(cli);
+    }
+}
+
 /// Open reth db and DB should be opened once per process but it can be cloned and moved to different threads.
 pub fn create_provider_factory(
     reth_datadir: Option<&Path>,
@@ -714,5 +727,87 @@ mod test {
             found,
             fixed_bytes!("00000001aaf2630a2874a74199f4b5d11a7d6377f363a236271bff4bf8eb4ab3")
         );
+    }
+
+    #[test]
+    fn test_cli_overrides_config() {
+        let config_str = r#"
+            log_json = false
+            chain = "mainnet"
+            dry_run = false
+        "#;
+        let mut config: Config = toml::from_str(config_str).unwrap();
+
+        let cli_args = BaseCliArgs {
+            log_json: Some(true),
+            chain: Some("goerli".to_string()),
+            ..Default::default()
+        };
+
+        let l1_args = L1CliArgs {
+            dry_run: Some(true),
+            ..Default::default()
+        };
+
+        config.merge(&cli_args);
+        config.merge(&l1_args);
+
+        assert_eq!(config.base_config.log_json, true);
+        assert_eq!(config.base_config.chain, "goerli");
+        assert_eq!(config.l1_config.dry_run, true);
+    }
+
+    #[test]
+    fn test_multiple_cli_overrides() {
+        let config_str = r#"
+            log_json = false
+            full_telemetry_server_port = 6060
+            redacted_telemetry_server_port = 6070
+            dry_run_validation_url = ["http://localhost:8545"]
+        "#;
+        let mut config: Config = toml::from_str(config_str).unwrap();
+
+        let cli_args = BaseCliArgs {
+            log_json: Some(true),
+            full_telemetry_server_port: Some(7000),
+            redacted_telemetry_server_port: Some(7001),
+            ..Default::default()
+        };
+
+        let l1_args = L1CliArgs {
+            dry_run_validation_url: Some(vec!["http://localhost:9545".to_string()]),
+            ..Default::default()
+        };
+
+        config.merge(&cli_args);
+        config.merge(&l1_args);
+
+        assert_eq!(config.base_config.log_json, true);
+        assert_eq!(config.base_config.full_telemetry_server_port, 7000);
+        assert_eq!(config.base_config.redacted_telemetry_server_port, 7001);
+        assert_eq!(
+            config.l1_config.dry_run_validation_url,
+            vec!["http://localhost:9545"]
+        );
+    }
+
+    #[test]
+    fn test_unset_cli_values_preserve_config() {
+        let config_str = r#"
+            chain = "mainnet"
+            max_concurrent_seals = 4
+            optimistic_enabled = true
+        "#;
+        let mut config: Config = toml::from_str(config_str).unwrap();
+
+        let cli_args = BaseCliArgs::default();
+        let l1_args = L1CliArgs::default();
+
+        config.merge(&cli_args);
+        config.merge(&l1_args);
+
+        assert_eq!(config.base_config.chain, "mainnet");
+        assert_eq!(config.l1_config.max_concurrent_seals, 4);
+        assert_eq!(config.l1_config.optimistic_enabled, true);
     }
 }

@@ -36,7 +36,11 @@ use std::{
 use tokio::sync::mpsc;
 use tracing::{error, warn};
 
-use super::SlotSource;
+use super::{
+    cli::{BaseCliArgs, L1CliArgs},
+    config::L1Config,
+    SlotSource,
+};
 
 /// Prefix for env variables in config
 const ENV_PREFIX: &str = "env:";
@@ -465,6 +469,95 @@ impl Default for BaseConfig {
             simulation_threads: 1,
             sbundle_mergeable_signers: None,
             sbundle_mergeabe_signers: None,
+        }
+    }
+}
+
+pub trait MergeFromCli<T> {
+    fn merge(&mut self, cli: &T);
+}
+
+impl MergeFromCli<BaseCliArgs> for BaseConfig {
+    fn merge(&mut self, cli: &BaseCliArgs) {
+        if let Some(log_json) = cli.log_json {
+            self.log_json = log_json;
+        }
+        if let Some(log_level) = &cli.log_level {
+            self.log_level = EnvOrValue(log_level.clone(), std::marker::PhantomData);
+        }
+        if let Some(port) = cli.full_telemetry_server_port {
+            self.full_telemetry_server_port = port;
+        }
+        if let Some(ip) = &cli.full_telemetry_server_ip {
+            self.full_telemetry_server_ip = Some(ip.clone());
+        }
+        if let Some(port) = cli.redacted_telemetry_server_port {
+            self.redacted_telemetry_server_port = port;
+        }
+        if let Some(ip) = &cli.redacted_telemetry_server_ip {
+            self.redacted_telemetry_server_ip = Some(ip.clone());
+        }
+        if let Some(log_color) = cli.log_color {
+            self.log_color = log_color;
+        }
+        if let Some(enable_dynamic) = cli.log_enable_dynamic {
+            self.log_enable_dynamic = enable_dynamic;
+        }
+        if let Some(path) = &cli.error_storage_path {
+            self.error_storage_path = Some(path.clone());
+        }
+        if let Some(db) = &cli.flashbots_db {
+            self.flashbots_db = Some(EnvOrValue(db.clone(), std::marker::PhantomData));
+        }
+        if let Some(port) = cli.jsonrpc_server_port {
+            self.jsonrpc_server_port = port;
+        }
+        if let Some(ip) = &cli.jsonrpc_server_ip {
+            self.jsonrpc_server_ip = Some(ip.clone());
+        }
+        if let Some(ignore) = cli.ignore_cancellable_orders {
+            self.ignore_cancellable_orders = ignore;
+        }
+        if let Some(ignore) = cli.ignore_blobs {
+            self.ignore_blobs = ignore;
+        }
+        if let Some(chain) = &cli.chain {
+            self.chain = chain.clone();
+        }
+        if let Some(dir) = &cli.reth_datadir {
+            self.reth_datadir = Some(dir.clone());
+        }
+    }
+}
+
+impl MergeFromCli<L1CliArgs> for L1Config {
+    fn merge(&mut self, cli: &L1CliArgs) {
+        if let Some(dry_run) = cli.dry_run {
+            self.dry_run = dry_run;
+        }
+        if let Some(urls) = &cli.dry_run_validation_url {
+            self.dry_run_validation_url = urls.clone();
+        }
+        if let Some(enabled) = cli.optimistic_enabled {
+            self.optimistic_enabled = enabled;
+        }
+        if let Some(val) = &cli.optimistic_max_bid_value_eth {
+            self.optimistic_max_bid_value_eth = val.clone();
+        }
+        if let Some(validate) = cli.optimistic_prevalidate_optimistic_blocks {
+            self.optimistic_prevalidate_optimistic_blocks = validate;
+        }
+        if let Some(seals) = cli.max_concurrent_seals {
+            self.max_concurrent_seals = seals;
+        }
+        if let Some(urls) = &cli.cl_node_url {
+            self.cl_node_url = urls
+                .iter()
+                .map(|u| EnvOrValue(u.clone(), std::marker::PhantomData))
+                .collect();
+        }
+        if let Some(version) = &cli.genesis_fork_version {
+            self.genesis_fork_version = Some(version.clone());
         }
     }
 }
