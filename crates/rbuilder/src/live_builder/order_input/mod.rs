@@ -11,8 +11,10 @@ use self::{
     orderpool::{OrderPool, OrderPoolSubscriptionId},
     replaceable_order_sink::ReplaceableOrderSink,
 };
-use crate::primitives::{serialize::CancelShareBundle, BundleReplacementKey, Order};
-use crate::telemetry::{set_current_block, set_ordepool_count};
+use crate::{
+    primitives::{serialize::CancelShareBundle, BundleReplacementKey, Order},
+    telemetry::{set_current_block, set_ordepool_count},
+};
 use alloy_consensus::Header;
 use jsonrpsee::RpcModule;
 use parking_lot::Mutex;
