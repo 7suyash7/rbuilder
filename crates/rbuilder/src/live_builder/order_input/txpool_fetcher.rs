@@ -25,10 +25,11 @@ pub async fn subscribe_to_txpool_with_blobs(
     global_cancel: CancellationToken,
 ) -> eyre::Result<JoinHandle<()>> {
     let handle = tokio::spawn(async move {
-        let provider = match ProviderBuilder::new()
+        let provider = ProviderBuilder::new()
             .on_ipc(IpcConnect::new(config.ipc_path.unwrap()))
-            .await
-        {
+            .await;
+
+        let provider = match provider {
             Ok(provider) => provider,
             Err(err) => {
                 error!(?err, "Failed to connect to IPC");

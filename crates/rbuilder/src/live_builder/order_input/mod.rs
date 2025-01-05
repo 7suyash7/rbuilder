@@ -225,18 +225,21 @@ where
         global_cancel.clone(),
     )
     .await?;
-    let txpool_fetcher = if config.ipc_path.is_some() {
+
+    let mut handles = vec![clean_job, rpc_server];
+
+    if config.ipc_path.is_some() {
         info!("IPC path configured, starting txpool subscription");
-        txpool_fetcher::subscribe_to_txpool_with_blobs(
+        let txpool_fetcher = txpool_fetcher::subscribe_to_txpool_with_blobs(
             config.clone(),
             order_sender.clone(),
             global_cancel.clone(),
         )
-        .await?
+        .await?;
+        handles.push(txpool_fetcher);
     } else {
         info!("No IPC path configured, skipping txpool subscription");
-        tokio::spawn(async {}) // Empty task
-    };
+    }
 
     let handle = tokio::spawn(async move {
         info!("OrderPoolJobs: started");
@@ -293,7 +296,7 @@ where
             new_commands.clear();
         }
 
-        for handle in [clean_job, rpc_server, txpool_fetcher] {
+        for handle in handles {
             handle
                 .await
                 .map_err(|err| {
