@@ -24,20 +24,13 @@ pub async fn subscribe_to_txpool_with_blobs(
     results: mpsc::Sender<ReplaceableOrderPoolCommand>,
     global_cancel: CancellationToken,
 ) -> eyre::Result<JoinHandle<()>> {
+    let ipc_path = config
+        .ipc_path
+        .ok_or_else(|| eyre::eyre!("No IPC path configured"))?;
+    let ipc = IpcConnect::new(ipc_path);
+    let provider = ProviderBuilder::new().on_ipc(ipc).await?;
+
     let handle = tokio::spawn(async move {
-        let provider = ProviderBuilder::new()
-            .on_ipc(IpcConnect::new(config.ipc_path.unwrap()))
-            .await;
-
-        let provider = match provider {
-            Ok(provider) => provider,
-            Err(err) => {
-                error!(?err, "Failed to connect to IPC");
-                global_cancel.cancel();
-                return;
-            }
-        };
-
         info!("Subscribe to txpool with blobs: started");
 
         let stream = match provider.subscribe_pending_transactions().await {
